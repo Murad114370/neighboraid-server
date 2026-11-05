@@ -1,12 +1,14 @@
 
-import express  from "express"
+import express  from "express";
 import { MongoClient } from 'mongodb';
+import 'dotenv/config';
+
 
 const app = express()
 const PORT =8000;
 
 
-const client = new MongoClient("mongodb://neighboraid-server:t6Xia0XLlfh7zsV5@ac-szqteue-shard-00-00.khjwenv.mongodb.net:27017,ac-szqteue-shard-00-01.khjwenv.mongodb.net:27017,ac-szqteue-shard-00-02.khjwenv.mongodb.net:27017/?ssl=true&replicaSet=atlas-s2669c-shard-0&authSource=admin");
+const client = new MongoClient(process.env.MONGODB_URI);
 
 export async function connectToMongoDB() {
   try {
