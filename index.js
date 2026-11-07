@@ -212,6 +212,36 @@ async function run() {
       }
     });
 
+    // 6. Get Events by Organizer Email (/events/organizer/:email)
+    app.get("/events/organizer/:email", async (req, res) => {
+      try {
+        const email = req.params.email;
+        const events = await createEventsCollection.find({ organizerEmail: email }).toArray();
+        res.send(events);
+      } catch (error) {
+        console.error("Error fetching organizer events:", error);
+        res.status(500).send({ message: "Failed to fetch organizer events", error: error.message });
+      }
+    });
+
+    // 7. Delete Created Event Route (/events/create/:id)
+    app.delete("/events/create/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await createEventsCollection.deleteOne(query);
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: "Event not found" });
+        }
+
+        res.send({ message: "Event deleted successfully", result });
+      } catch (error) {
+        console.error("Error deleting event:", error);
+        res.status(500).send({ message: "Failed to delete event", error: error.message });
+      }
+    });
+
     // Start Express Listener only after DB is successfully connected
     app.listen(PORT, () => {
       console.log(`Server is running at http://localhost:${PORT}`);
