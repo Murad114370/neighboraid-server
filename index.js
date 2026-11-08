@@ -1,4 +1,3 @@
-
 import express from "express";
 import { MongoClient, ObjectId } from "mongodb";
 import cors from "cors";
@@ -27,7 +26,7 @@ async function run() {
     const createEventsCollection = db.collection("createEvents");
 
     // --- FORCE RESET & SEED 6 CHATTOGRAM EVENTS ---
-    // (Note: deleteMany will clear your database every time the server restarts. 
+    // (Note: deleteMany will clear your database every time the server restarts.
     // Comment it out if you want user-created events to persist across server reboots!)
     // await eventsCollection.deleteMany({});
 
@@ -113,7 +112,7 @@ async function run() {
       try {
         const today = new Date().toISOString().split("T")[0];
 
-        // Fetch both seeded events and user-created events if stored in eventsCollection, 
+        // Fetch both seeded events and user-created events if stored in eventsCollection,
         // or merge them depending on your app design. Here we query eventsCollection.
         const events = await eventsCollection
           .find({ date: { $gte: today } })
@@ -123,7 +122,9 @@ async function run() {
         res.send(events);
       } catch (error) {
         console.error("Error fetching events:", error);
-        res.status(500).send({ message: "Failed to fetch events", error: error.message });
+        res
+          .status(500)
+          .send({ message: "Failed to fetch events", error: error.message });
       }
     });
 
@@ -139,22 +140,25 @@ async function run() {
         res.status(201).send(result);
       } catch (error) {
         console.error("Error creating event:", error);
-        res.status(500).send({ message: "Failed to create event", error: error.message });
+        res
+          .status(500)
+          .send({ message: "Failed to create event", error: error.message });
       }
     });
 
-    // 3. Create Event Form Route (POST /events/create) -> MOVED INSIDE RUN()
+    // 3. CREATE EVENT FORM ROUTE (/events/create)
     app.post("/events/create", async (req, res) => {
       try {
         const data = req.body;
-        console.log("API Called (/events/create with data):", data);
+        const sharedId = new ObjectId(); // Shared ID so View, Edit, and Delete match across both collections
 
-        // Save to createEvents collection (and optionally to eventsCollection so it shows up in /events)
-        const result = await createEventsCollection.insertOne(data);
-        console.log(result);
-        
-        // Also format and save to main events list so it renders on your events page
-        const formattedEventForFeed = {
+        const createdDoc = {
+          _id: sharedId,
+          ...data,
+        };
+
+        const feedDoc = {
+          _id: sharedId,
           title: data.title,
           category: data.type,
           date: data.date,
@@ -164,21 +168,37 @@ async function run() {
           image: data.thumbnailUrl,
           createdAt: data.createdAt,
         };
-        await eventsCollection.insertOne(formattedEventForFeed);
 
-        res.status(201).send({ message: "Event created successfully!", insertedId: result.insertedId });
+        await createEventsCollection.insertOne(createdDoc);
+        await eventsCollection.insertOne(feedDoc);
+
+        res.status(201).send({
+          message: "Event created successfully!",
+          insertedId: sharedId,
+        });
       } catch (error) {
         console.error("Error in /events/create:", error);
-        res.status(500).send({ message: "Failed to create event", error: error.message });
+        res
+          .status(500)
+          .send({ message: "Failed to create event", error: error.message });
       }
     });
 
-    // 4. Get Single Event Details Route (GET)
+    // 4. GET SINGLE EVENT DETAILS BY ID (/events/:id) - Used by View
     app.get("/events/:id", async (req, res) => {
       try {
         const id = req.params.id;
-        const query = { _id: new ObjectId(id) };
-        const event = await eventsCollection.findOne(query);
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ message: "Invalid event ID" });
+        }
+
+        // Check eventsCollection first, fallback to createEventsCollection
+        let event = await eventsCollection.findOne({ _id: new ObjectId(id) });
+        if (!event) {
+          event = await createEventsCollection.findOne({
+            _id: new ObjectId(id),
+          });
+        }
 
         if (!event) {
           return res.status(404).send({ message: "Event not found" });
@@ -186,7 +206,10 @@ async function run() {
 
         res.send(event);
       } catch (error) {
-        res.status(500).send({ message: "Failed to fetch event details" });
+        res.status(500).send({
+          message: "Failed to fetch event details",
+          error: error.message,
+        });
       }
     });
 
@@ -201,35 +224,118 @@ async function run() {
         });
 
         if (existing) {
-          return res.status(400).send({ message: "You have already joined this event!" });
+          return res
+            .status(400)
+            .send({ message: "You have already joined this event!" });
         }
 
         const result = await joinedEventsCollection.insertOne(joinData);
         res.send(result);
       } catch (error) {
         console.error("Error joining event:", error);
-        res.status(500).send({ message: "Failed to join event", error: error.message });
+        res
+          .status(500)
+          .send({ message: "Failed to join event", error: error.message });
       }
     });
 
-    // 6. Get Events by Organizer Email (/events/organizer/:email)
+    // Get Joined Events for a specific user (GET)
+    app.get("/joined-events/:email", async (req, res) => {
+      try {
+        const email = req.params.email;
+        const joined = await joinedEventsCollection
+          .find({ userEmail: email })
+          .sort({ date: 1 })
+          .toArray();
+        res.send(joined);
+      } catch (error) {
+        console.error("Error fetching joined events:", error);
+        res
+          .status(500)
+          .send({
+            message: "Failed to fetch joined events",
+            error: error.message,
+          });
+      }
+    });
+
+    // 6. Get Events by Organizer Email (Sorted by Date Ascending)
     app.get("/events/organizer/:email", async (req, res) => {
       try {
         const email = req.params.email;
-        const events = await createEventsCollection.find({ organizerEmail: email }).toArray();
+        const events = await createEventsCollection
+          .find({ organizerEmail: email })
+          .sort({ date: 1 }) // Automatically sorts earliest date first (-1 for latest first)
+          .toArray();
+
         res.send(events);
       } catch (error) {
         console.error("Error fetching organizer events:", error);
-        res.status(500).send({ message: "Failed to fetch organizer events", error: error.message });
+        res.status(500).send({
+          message: "Failed to fetch organizer events",
+          error: error.message,
+        });
       }
     });
 
-    // 7. Delete Created Event Route (/events/create/:id)
+    // 7. UPDATE / EDIT CREATED EVENT ROUTE (PUT /events/create/:id)
+    app.put("/events/create/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updatedData = req.body;
+        const filter = { _id: new ObjectId(id) };
+
+        // Update in createEventsCollection
+        const createUpdate = {
+          $set: {
+            title: updatedData.title,
+            type: updatedData.type,
+            date: updatedData.date,
+            location: updatedData.location,
+            thumbnailUrl: updatedData.thumbnailUrl,
+            description: updatedData.description,
+          },
+        };
+        const result = await createEventsCollection.updateOne(
+          filter,
+          createUpdate,
+        );
+
+        // Also update in main eventsCollection feed
+        const feedUpdate = {
+          $set: {
+            title: updatedData.title,
+            category: updatedData.type,
+            date: updatedData.date,
+            location: updatedData.location,
+            image: updatedData.thumbnailUrl,
+            description: updatedData.description,
+          },
+        };
+        await eventsCollection.updateOne(filter, feedUpdate);
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ message: "Event not found" });
+        }
+
+        res.send({ message: "Event updated successfully!", result });
+      } catch (error) {
+        console.error("Error updating event:", error);
+        res
+          .status(500)
+          .send({ message: "Failed to update event", error: error.message });
+      }
+    });
+
+    // 8. DELETE CREATED EVENT ROUTE (DELETE /events/create/:id)
     app.delete("/events/create/:id", async (req, res) => {
       try {
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
+
+        // Delete from both collections
         const result = await createEventsCollection.deleteOne(query);
+        await eventsCollection.deleteOne(query);
 
         if (result.deletedCount === 0) {
           return res.status(404).send({ message: "Event not found" });
@@ -238,7 +344,9 @@ async function run() {
         res.send({ message: "Event deleted successfully", result });
       } catch (error) {
         console.error("Error deleting event:", error);
-        res.status(500).send({ message: "Failed to delete event", error: error.message });
+        res
+          .status(500)
+          .send({ message: "Failed to delete event", error: error.message });
       }
     });
 
@@ -253,4 +361,3 @@ async function run() {
 
 // Execute DB connection and setup routes
 run().catch(console.dir);
-
