@@ -250,12 +250,10 @@ async function run() {
         res.send(joined);
       } catch (error) {
         console.error("Error fetching joined events:", error);
-        res
-          .status(500)
-          .send({
-            message: "Failed to fetch joined events",
-            error: error.message,
-          });
+        res.status(500).send({
+          message: "Failed to fetch joined events",
+          error: error.message,
+        });
       }
     });
 
@@ -347,6 +345,43 @@ async function run() {
         res
           .status(500)
           .send({ message: "Failed to delete event", error: error.message });
+      }
+    });
+
+    // app.get("/upcoming-events", async (req, res) => {
+    //   try {
+    //     const today = new Date().toISOString().split("T")[0];
+
+    //     const result = await eventsCollection
+    // .find({ date: { $gte: today } })
+    // .sort({ date: 1 }) // 1 = Ascending (soonest dates first)
+    // .limit(6) // Restricts output to 6 documents
+    // .toArray();
+
+    //     res.send(result);
+    //   } catch (error) {
+    //     res
+    //       .status(500)
+    //       .send({ message: "Failed to fetch upcoming events", error });
+    //   }
+    // });
+
+    app.get("/upcoming-events", async (req, res) => {
+      try {
+        // Gets today's date in YYYY-MM-DD format (matches the date picker from your CreateEventForm)
+        const today = new Date().toISOString().split("T")[0];
+
+        const result = await createEventsCollection
+          .find({ date: { $gte: today } }) // Filters for today or future dates
+          .sort({ date: 1 }) // Sorts chronologically (soonest upcoming first)
+          .limit(6) // Restricts the result strictly to 6 items using .limit()
+          .toArray();
+
+        res.send(result);
+      } catch (error) {
+        res
+          .status(500)
+          .send({ message: "Failed to fetch upcoming events", error });
       }
     });
 
