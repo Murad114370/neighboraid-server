@@ -7,8 +7,30 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 
 // Middleware
-app.use(cors());
+// app.use(cors());
+app.use(
+  cors({
+    origin: 'http://localhost:3000', // exact frontend address, not '*'
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
 app.use(express.json());
+
+
+const verifyApi = (req,res,next)=>{
+      const authHeader = req.headers.authorization
+      console.log(authHeader);
+
+      if(authHeader!== "user logged in"){
+        return res.status(401).send({msg: 'Unauthorized!'})
+      }
+      next();
+      console.log("It is Middleware");
+    
+
+}
 
 // MongoDB Client Setup
 const client = new MongoClient(process.env.MONGODB_URI);
@@ -185,7 +207,11 @@ async function run() {
     });
 
     // 4. GET SINGLE EVENT DETAILS BY ID (/events/:id) - Used by View
-    app.get("/events/:id", async (req, res) => {
+    app.get("/events/:id",
+       verifyApi,
+       async (req, res) => {
+      
+
       try {
         const id = req.params.id;
         if (!ObjectId.isValid(id)) {
